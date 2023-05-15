@@ -6,6 +6,99 @@ import XCTest
 import Sodium
 @testable import DoubleRatchet
 
+/// this extension exists here for the purpose of making these XCTests functional and passing
+/// as they were written from the original "forked" repo
+extension DoubleRatchet {
+    public convenience init(keyPair: KeyPair?, remotePublicKey: PublicKey?, sharedSecret: Bytes, maxSkip: Int, maxCache: UInt, info: String) throws {
+        MessageKeyCacheInMemoryTest.shared.maxCacheEntries = maxCache
+        try self.init(keyPair: keyPair, remotePublicKey: remotePublicKey, sharedSecret: sharedSecret, maxSkip: maxSkip, info: info, messageKeyCache: MessageKeyCacheInMemoryTest.shared)
+    }
+    public convenience init(sessionState: SessionState) {
+        self.init(sessionState: sessionState,messageKeyCache: MessageKeyCacheInMemoryTest.shared)
+    }
+}
+
+/// this is a very ineffient approach to a memory cache
+/// and should not be used as a "real" implementation
+/// however it is relatively easy to follow and should work for
+/// unit and integration tests
+class MessageKeyCacheInMemoryTest : MessageKeyCache {
+    
+    public var rootKeyPair: KeyPair? = nil
+    var pubKeyMsgNumDict: [PublicKey:[Int:MsgKeyItem]] = [:]
+    private static var messageKeyCacheInMemoryTest:MessageKeyCacheInMemoryTest?
+    /// must be a number larger than 0, if set to 0, it will be UInt.max
+    public var maxCacheEntries = UInt.max {
+        didSet {
+            if maxCacheEntries == 0 {
+                maxCacheEntries = UInt.max
+            }
+        }
+    }
+    private var numCacheEntries:UInt = 0
+
+    struct MsgKeyItem: Codable {
+        let messageKey: MessageKey
+        let date: Date
+    }
+    
+    static var shared: MessageKeyCacheInMemoryTest {
+        if messageKeyCacheInMemoryTest == nil {
+            messageKeyCacheInMemoryTest = MessageKeyCacheInMemoryTest()
+        }
+        return messageKeyCacheInMemoryTest!
+    }
+    
+    func add(messageKey: MessageKey, messageNumber: Int, publicKey: PublicKey) throws {
+        guard (try? getMessageKey(messageNumber: messageNumber, publicKey: publicKey)) == nil else {
+            return
+        }
+        while numCacheEntries >= maxCacheEntries {
+            try dropOldestEntry()
+        }
+        let messageKeyItem = MsgKeyItem(messageKey: messageKey, date: Date.now)
+        if pubKeyMsgNumDict[publicKey] != nil {
+            pubKeyMsgNumDict[publicKey]?[messageNumber] = messageKeyItem
+        } else {
+            pubKeyMsgNumDict[publicKey] = [messageNumber:messageKeyItem]
+        }
+        numCacheEntries += 1
+    }
+    
+    func getMessageKey(messageNumber: Int, publicKey: PublicKey) throws -> MessageKey? {
+        let msgNumToMsgKey = pubKeyMsgNumDict[publicKey]
+        let msgKeyItem = msgNumToMsgKey?[messageNumber]
+        return msgKeyItem?.messageKey
+    }
+    
+    func remove(publicKey: PublicKey, messageNumber: Int) throws {
+        pubKeyMsgNumDict[publicKey]?.removeValue(forKey: messageNumber)
+        if pubKeyMsgNumDict[publicKey]?.count == 0 {
+            pubKeyMsgNumDict.removeValue(forKey: publicKey)
+        }
+        numCacheEntries -= 1
+    }
+    
+    private func dropOldestEntry() throws {
+        var oldestPubKey: PublicKey?
+        var oldestMsgNum: Int?
+        var oldestDate: Date?
+        for (pkey, value) in pubKeyMsgNumDict {
+            for (mNum, msgKI) in value {
+                if (oldestDate == nil || msgKI.date < oldestDate!) {
+                    oldestDate = msgKI.date
+                    oldestPubKey = pkey
+                    oldestMsgNum = mNum
+                }
+            }
+        }
+        if let oldestPubKey = oldestPubKey, let oldestMsgNum = oldestMsgNum {
+            try remove(publicKey: oldestPubKey, messageNumber: oldestMsgNum)
+        }
+    }
+
+}
+
 final class DoubleRatchetTests: XCTestCase {
 
     let sodium = Sodium()
