@@ -9,7 +9,7 @@ Pod::Spec.new do |s|
   s.homepage      = "http://ticeapp.com"
 
   s.author        = { "TICE Software UG (haftungsbeschränkt)" => "contact@ticeapp.com" }
-  s.source        = { :git => "https://github.com/TICESoftware/DoubleRatchet.git", :tag => "#{s.version}" }
+  s.source        = { :git => "https://github.com/dpasirst/DoubleRatchet.git", :tag => "#{s.version}" }
   s.license      = { :type => 'MIT' }
 
   s.source_files  = "Sources/**/*"
