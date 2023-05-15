@@ -100,7 +100,11 @@ public class DoubleRatchet {
         
         if let cachedMessageKey = try messageKeyCache?.getMessageKey(messageNumber: message.header.messageNumber, publicKey: message.header.publicKey) {
             logger.debug("Use cached message key to decrypt message with number \(message.header.messageNumber) in receiving chain with public key \(fingerprint(publicKey: message.header.publicKey)).")
-            return try decrypt(message: message, key: cachedMessageKey, associatedData: associatedData)
+            let decryptedData = try decrypt(message: message, key: cachedMessageKey, associatedData: associatedData)
+            // assumption: once we sucessfully use the key from cache for a message
+            // we should not longer keep it in cache...
+            _ = try? messageKeyCache?.remove(publicKey: message.header.publicKey, messageNumber: message.header.messageNumber)
+            return decryptedData
         }
 
         if message.header.publicKey == rootChain.remotePublicKey && message.header.messageNumber < receivedMessageNumber {
